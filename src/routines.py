@@ -24,11 +24,19 @@ def train_single_epoch(
         nn_teacher,
         loss_computer,
         train_loader, 
-        multicropper
+        multicropper,
+        learning_rate,
+        temp_student,
+        temp_teacher,
+        cent_rate_m,
+        lambda_ema
     ):
     """
     Train the provided networks in the DINO framework for a single epoch
     """
+
+    # We'll log some stuff
+    total_loss_per_epoch = 0
 
     # Load the batches from the data loader
     for i, batch in tqdm.tqdm(enumerate(train_loader), total=len(train_loader),
@@ -36,6 +44,10 @@ def train_single_epoch(
 
         # Zero the parameter gradients
         optimiser.zero_grad()
+
+        # Update the learning rate
+        for g in optimiser.param_groups:
+            g['lr'] = learning_rate
 
         # Account for mixed precision if using
         with torch.cuda.amp.autocast(enabled=mixed_precision):
@@ -57,18 +69,42 @@ def train_single_epoch(
             out_student_local  = nn_student(local_crops)
 
             # Calculate the DINO loss 
-            #loss = 
+            loss =  loss_computer(
+                        out_student_global, 
+                        out_student_local, 
+                        out_teacher,
+                        temp_student,
+                        temp_teacher,
+                        cent_rate_m
+                    )
+            total_loss_per_epoch += loss
 
+            # Update the DINO loss computer's centering parameter
+            loss_computer.update_center(out_teacher, cent_rate_m)
 
         # Update the student with mixed precision loss prop
-        #scaler.scale(loss).backward()
-        #scaler.step(optimiser)
-        #scaler.update()
+        scaler.scale(loss).backward()
+        scaler.step(optimiser)
+        scaler.update()
 
-    # Use exponential moving average (EMA) of the student weights to update the 
-    # teacher 
+    # Keep a running track of the loss
+    total_loss_per_epoch += loss
 
-    # Perform logging 
+    # Announce
+    print("Epoch summary:")
+    print(f" - total loss: {total_loss_per_epoch}")
+    print(f" - learning rate: {learning_rate}")
+    print(f" - student temperature: {temp_student}")
+    print(f" - teacher temperature: {temp_teacher}")
+    print(f" - centering rate parameter: {cent_rate_m}")
+    print(f" - lambda teacher update proportion: {lambda_ema}")
+
+    # Use exponential moving average (EMA, or momentum encoder) of the student 
+    # weights to update the teacher. Importantly - do not perform these calculations
+    # with the intention to calculation gradients (its a waste)
+    with torch.no_grad():
+        for param_q, param_k in zip(nn_student.parameters(), nn_teacher.parameters()):
+            param_k.data.mul_(lambda_ema).add_((1 - lambda_ema) * param_q.detach().data)
 
 def dino_train(fp_config):
     """
@@ -174,8 +210,21 @@ def dino_train(fp_config):
     # Create temperature schedulers
     sch_temp_student = utils.LinearPiecewiseScheduler(config['temp_student_values'], 
                                                       config['temp_student_epochs'])
+
+    # Too high temperature at the start may cause the teacher's training
+    # to be unstable. Investigate the use of warm up as necessary
     sch_temp_teacher = utils.LinearPiecewiseScheduler(config['temp_teacher_values'], 
                                                       config['temp_teacher_epochs'])
+
+    # The centering rate parameter (usually in range [0.9, 0.999])
+    sch_cent_rate_m = utils.LinearPiecewiseScheduler(config['cent_rate_m_values'], 
+                                                     config['cent_rate_m_epochs'])
+
+    # The lambda weight transfer parameter (the amount of teacher network v. student
+    # network to include in the next iteration of the teacher network)
+    # TODO a cosine scheduler should be used if possible
+    sch_lambda_ema = utils.LinearPiecewiseScheduler(config['lambda_ema_values'], 
+                                                       config['lambda_ema_epochs'])
     
     # ================ OPTIMISER ================
     
@@ -191,13 +240,13 @@ def dino_train(fp_config):
     
     # Prepare the loss module
     print("Preparing DINO loss module ... ", end="")
-    loss_computer = LossComputerDINO()
+    loss_computer = LossComputerDINO(output_dim=config['n_classes'])
     loss_computer.to(device)
     print("ready")    
     
     # ================ TRAINING ================
     
-    print("Preparing training ... ", end="")
+    print("Preparing training procedure ... ", end="")
 
     # Create a scalar for mixed precision as 
     # desired (no op if flag is false) 
@@ -211,12 +260,22 @@ def dino_train(fp_config):
     print("ready")
         
     time.sleep(0.5)
+
+    print("This is where the fun begins!")
     
     # Perform as many epochs of training as required
     n_epochs = config['n_epochs']
-    for i in range(n_epochs):
+    for epoch_idx in range(n_epochs):
+        # Get the schedule values
+        learning_rate   = sch_lr.get_value(epoch_idx)
+        temp_student    = sch_temp_student.get_value(epoch_idx)
+        temp_teacher    = sch_temp_teacher.get_value(epoch_idx)
+        cent_rate_m     = sch_cent_rate_m.get_value(epoch_idx)
+        lambda_ema      = sch_lambda_ema.get_value(epoch_idx)
+
+        # And train a single epoch
         train_single_epoch(
-            epoch_idx=i, 
+            epoch_idx=epoch_idx, 
             n_epochs=n_epochs, 
             device=device,
             scaler=scaler,
@@ -226,5 +285,10 @@ def dino_train(fp_config):
             nn_teacher=nn_teacher,
             loss_computer=loss_computer,
             train_loader=train_loader, 
-            multicropper=multicropper)
+            multicropper=multicropper,
+            learning_rate=learning_rate,
+            temp_student=temp_student,
+            temp_teacher=temp_teacher,
+            cent_rate_m=cent_rate_m,
+            lambda_ema=lambda_ema)
     

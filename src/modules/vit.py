@@ -49,7 +49,7 @@ class VisionTransformer(nn.Module):
     def __init__(
         self, 
         global_size=224,
-        n_classes=32,
+        n_classes=0,
         in_channels=3,
         patch_size=16,
         embed_dim=768,
@@ -78,7 +78,7 @@ class VisionTransformer(nn.Module):
         # vectors. We set them up for the global size crops and interpolate to the local
         # size crops as needed
         self.patch_size = patch_size
-        self.n_global_patches = (global_size // self.patch_size)**2
+        self.n_global_patches = (global_size // self.patch_size) ** 2
         self.pos_encoding = nn.Parameter(torch.zeros(1, self.n_global_patches + 1, embed_dim))
         
         # Then we have a block of transformer blocks
@@ -95,7 +95,10 @@ class VisionTransformer(nn.Module):
         # A classification head is not actually needed here. We can just softmax the CLS token
         # outputs (each an E-dimensional vector) and use those to calculate the probability
         # distributions as per the DINO paper's equation 1. A use case is to take these CLS
-        # tokens and use an MLP head to classify them with labelled data (fine tuning)
+        # tokens and use an MLP head to classify them with labelled data (fine tuning), or 
+        # if we want K != E
+        if n_classes > 0:
+            self.head = nn.Linear(embed_dim, n_classes)
         
     def get_pos_encoding(self, x, W, H):
         """ 
@@ -170,6 +173,11 @@ class VisionTransformer(nn.Module):
         
         # And the normalisation
         x = self.norm(x)
+
+        # Push it through the head too (this may be an identify, or an FC mapping from 
+        # E (embedding size) to K (num classes dimensions)
+        if self.head:
+            return self.head(x)
         
         # Then we just return the CLS tokens (first token of every batch - each should be 
         # E-dimensional)

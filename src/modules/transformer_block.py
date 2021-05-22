@@ -54,6 +54,8 @@ class MultiheadAttention(nn.Module):
         dp_pd = dp.softmax(dim=-1)
         dp_pd = self.qkv_drop(dp_pd)
 
+        # REFACTOR ABOVE AS ATTN TODO
+
         # Secondly, multiply this result with the values, to get a scaled selection
         # in the shape (B, NH, T, HD)
         scaled_sel = dp_pd @ v
@@ -129,5 +131,9 @@ class TransformerBlock(nn.Module):
         shape again is preserved (B, T, E)
         """
         x = x + self.mhattn(self.norm1(x))
+
+        # TODO: to visualise self attention maps we need the result of the multihead
+        # attention
+
         x = x + self.mlp(self.norm2(x))
         return x

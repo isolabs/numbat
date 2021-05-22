@@ -86,6 +86,6 @@ class LinearPiecewiseScheduler():
         Return the value at the provided step. If before the range return
         the first value, if beyond the range return the last value
         """
-        step = min(step, len(self.values_at_steps))
+        step = min(step, len(self.values_at_steps) - 1)
         step = max(step, 0)
         return self.values_at_steps[step]
