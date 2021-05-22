@@ -12,7 +12,7 @@ class MultiheadAttention(nn.Module):
         # whole thing in parllel
         self.n_heads  = n_heads
         self.io_dim   = io_dim
-        self.head_dim = self.io_dim // n_heads
+        self.head_dim = self.io_dim // self.n_heads
 
         # This prevents feeding large values into the softmax (causing small gradients)
         self.scale = self.head_dim ** -0.5

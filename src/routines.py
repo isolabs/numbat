@@ -11,7 +11,7 @@ import utils
 import datawork as dw
 import modules.vit as vit
 from modules.multicropper import MultiCropper
-from modules.loss_dino import LossDINO
+from modules.loss import LossComputerDINO
 
 def train_single_epoch(
         epoch_idx, 
@@ -22,6 +22,7 @@ def train_single_epoch(
         mixed_precision,
         nn_student,
         nn_teacher,
+        loss_computer,
         train_loader, 
         multicropper
     ):
@@ -43,8 +44,10 @@ def train_single_epoch(
             global_crops, local_crops = multicropper.crop(batch['image'])
 
             # Move them to the desired device
-            global_crops.to(device)
-            local_crops.to(device)
+            # Note that the data version of the 'to' function is not 
+            # an in place operation
+            global_crops = global_crops.to(device)
+            local_crops = local_crops.to(device)
 
             # Push the global views through the teacher network
             out_teacher = nn_teacher(global_crops)
@@ -166,13 +169,13 @@ def dino_train(fp_config):
     # ================ SCHEDULERS ================
     
     # Create learning rate schedulers
-    # TODO
+    sch_lr = utils.LinearPiecewiseScheduler(config['lr_values'], config['lr_epochs'])
     
     # Create temperature schedulers
-    # TODO
-    
-    # Create schedulers (learning rate, temperature, etc.)
-    # TODO
+    sch_temp_student = utils.LinearPiecewiseScheduler(config['temp_student_values'], 
+                                                      config['temp_student_epochs'])
+    sch_temp_teacher = utils.LinearPiecewiseScheduler(config['temp_teacher_values'], 
+                                                      config['temp_teacher_epochs'])
     
     # ================ OPTIMISER ================
     
@@ -181,14 +184,15 @@ def dino_train(fp_config):
     # Note that it is recommended to only construct this after the 
     # models are on the GPU (if using a GPU)
     optimiser = torch.optim.Adam(nn_student.parameters(), 
-                                 lr=config['opt_learning_rate'])
+                                 lr=sch_lr.get_value(0))
     print("ready")
     
     # ================ DINO LOSS ================
     
     # Prepare the loss module
     print("Preparing DINO loss module ... ", end="")
-    loss = LossDINO()
+    loss_computer = LossComputerDINO()
+    loss_computer.to(device)
     print("ready")    
     
     # ================ TRAINING ================
@@ -220,6 +224,7 @@ def dino_train(fp_config):
             optimiser=optimiser,
             nn_student=nn_student,
             nn_teacher=nn_teacher,
+            loss_computer=loss_computer,
             train_loader=train_loader, 
             multicropper=multicropper)
     

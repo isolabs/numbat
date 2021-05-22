@@ -16,7 +16,7 @@ class PatchEmbedder(nn.Module):
         By default, as in the DINO paper, we use RGB images with a desired patch size of 16, and 
         embedding dimension of 768
         """
-        
+
         super().__init__()
         
         # This is not *really* a convolutional layer - it acts like an MLP but clever use
@@ -63,6 +63,7 @@ class VisionTransformer(nn.Module):
         """
         The inputs here allow us to instantiate the entire network
         """
+
         super().__init__()
         
         # Start by creating the patch embedding
@@ -132,7 +133,9 @@ class VisionTransformer(nn.Module):
         interp_rem_encoding = nn.functional.interpolate(
             rem_encoding.reshape(1, sqrt_gN, sqrt_gN, E).permute(0, 3, 1, 2), # to (1, E, sqN, sqN)
             scale_factor=(w_scale / sqrt_gN, h_scale / sqrt_gN),
-            mode='bicubic'
+            mode='bicubic',
+            align_corners=False,
+            recompute_scale_factor=False
         )
         
         # Get back into form (1, T, E) and concat with unmodified class token position encoding
