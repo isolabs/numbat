@@ -11,7 +11,7 @@ n_epochs:               64 #300
 mixed_precision:        False
 # Data loading
 fp_data_mars32k:        '/home/ubuntu/numbat/data/mars32k'
-data_proportion:        1.0
+data_proportion:        0.01
 train_test_ratio:       0.9
 perform_shuffle:        True
 batch_size:             96 #1024

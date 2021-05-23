@@ -287,19 +287,19 @@ def dino_train(fp_config, fp_save):
 
         metrics.append(epoch_metrics)
     
-    # ================ TRAINING ================
-    
-    print("Saving experiment ... ", end="")
-    utils.save_experiment(
-        fp_save=fp_save, 
-        nn_student=nn_student, 
-        nn_teacher=nn_teacher, 
-        optimiser=optimiser, 
-        loss_computer=loss_computer, 
-        config=config,
-        metrics=metrics
-    )
-    print("complete")
+        # ================ SAVING ================
+        
+        print("Saving experiment ... ", end="")
+        utils.save_experiment(
+            fp_save=fp_save, 
+            nn_student=nn_student, 
+            nn_teacher=nn_teacher, 
+            optimiser=optimiser, 
+            loss_computer=loss_computer, 
+            config=config,
+            metrics=metrics
+        )
+        print("complete")
     
 def inference_attention_maps(fp_experiment, fp_out, n_images=4):
     """ 
