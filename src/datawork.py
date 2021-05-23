@@ -1,11 +1,13 @@
 
 import os
 import glob
+import math
 
-from torchvision.io import read_image
-from torchvision import transforms
+import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+from torchvision.io import read_image
+from torchvision import transforms
 
 def dataset_statistics(dataset, rgb=False):
     
@@ -113,6 +115,36 @@ class DatasetMars32k(Dataset):
         
         # TODO HDF5 / bmp efficiency
         return instance
+
+def get_mars32k_train_test_dataloaders(filepath, data_proportion, train_test_ratio, batch_size, perform_shuffle):
+    """ 
+    Get the train and test dataloaders for the mars32k dataset
+    """
+    
+    # This is our simple preprocessing chain
+    transform = transforms.Compose([
+        TransformToFloat(),
+        TransformNormalizeMars32k()
+    ])
+    # Apply these transformations and load
+    dataset = DatasetMars32k(filepath, transform=transform)
+
+    # Downsize the amount of data being used if appropriate
+    data_downsize = math.floor( len(dataset) * data_proportion )
+    dataset = torch.utils.data.Subset(dataset, range(data_downsize))
+    
+    # Make the split of data
+    n_train = math.floor( len(dataset) * train_test_ratio )
+    n_test  = ( len(dataset) - n_train )
+    train_set, test_set = torch.utils.data.random_split(dataset, [n_train, n_test])
+    
+    # Convert to dataloaders
+    batch_size = batch_size
+    shuffle = perform_shuffle
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=shuffle)
+    test_loader  = DataLoader(test_set,  batch_size=batch_size, shuffle=shuffle)
+
+    return train_loader, test_loader
     
 class DatasetMSL(Dataset):
     def __init__(self, fp_root, fn_pairs, transform=None):

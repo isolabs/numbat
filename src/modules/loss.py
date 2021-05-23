@@ -75,8 +75,6 @@ class LossComputerDINO(nn.Module):
         log_prob_s_l = F.log_softmax( out_student_local  / temp_student, dim=-1 )
         log_prob_s   = torch.cat((log_prob_s_g, log_prob_s_l), dim=0) # (B * (n_crops_total), E)
         # Paper says +c, code says -c ?
-        print(out_teacher.shape)
-        print(self.center.shape)
         prob_t       = F.softmax( (out_teacher - self.center ) / temp_teacher, dim=-1 )
 
         # We need to calculate the total (scalar) loss and divide it by the number

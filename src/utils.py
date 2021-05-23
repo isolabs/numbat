@@ -1,12 +1,15 @@
 import yaml
-import tqdm
+import datetime
+
+import torch
 
 import pandas as pd
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import tqdm
 
-import torch
+import modules.vit as vit
 
 def plot_instance(inst):
     """ 
@@ -45,6 +48,23 @@ def read_yaml(fp):
     # Load the configuration file 
     with open(fp) as f:
         return yaml.load(f, Loader=yaml.FullLoader)
+        
+def build_vision_transformer_from_config(config):
+    """ 
+    This helper function builds a vision transformer from the config file
+    """
+    return vit.VisionTransformer(
+        global_size=config['global_size'],
+        n_classes=config['n_classes'],
+        in_channels=config['in_channels'],
+        patch_size=config['patch_size'],
+        embed_dim=config['embed_dim'],
+        n_blocks=config['n_blocks'],
+        n_heads=config['n_heads'],
+        attn_drop_p=config['attn_drop_p'], 
+        attn_embed_drop_p=config['attn_embed_drop_p'],
+        mlp_hidden_ratio=config['mlp_hidden_ratio'],
+        mlp_drop_p=config['mlp_drop_p'])
 
 class LinearPiecewiseScheduler():
     """ 
@@ -89,3 +109,22 @@ class LinearPiecewiseScheduler():
         step = min(step, len(self.values_at_steps) - 1)
         step = max(step, 0)
         return self.values_at_steps[step]
+
+def save_experiment(fp_save, nn_student, nn_teacher, optimiser, loss_computer, config):
+    """ 
+    Save everything needed to reproduce / extend the experiment to a file
+    """
+
+    # Append a timestamp (milliseconds not required) and file extension 
+    # to the filepath
+    timestamp = datetime.datetime.now().replace(microsecond=0)
+    filepath = fp_save + (" " + str(timestamp) + ".pt")
+
+    # Save it at the directory
+    torch.save({
+        'student_state_dict': nn_student.state_dict(),
+        'teacher_state_dict': nn_teacher.state_dict(),
+        'optimiser_state_dict': optimiser.state_dict(),
+        'loss_computer_state_dict': loss_computer.state_dict(),
+        'config': config
+    }, filepath)

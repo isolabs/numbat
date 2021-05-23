@@ -1,0 +1,42 @@
+# DINO parameterisation
+global_size:            224
+local_size:             96
+n_global_crops:         2
+n_local_crops:          6 #8
+n_classes:              0
+centering_rate_m:       0.9
+
+# Training hyperparameters
+n_epochs:               16 #300
+mixed_precision:        False
+# Data loading
+fp_data_mars32k:        '/home/prang/dev/numbat/data/mars32k'
+data_proportion:        1.0
+train_test_ratio:       0.9
+perform_shuffle:        True
+batch_size:             48 #64
+# Schedules
+lr_values:              [0.01]
+lr_epochs:              [0]
+temp_student_values:    [0.1] 
+temp_student_epochs:    [0]
+temp_teacher_values:    [0.04]
+temp_teacher_epochs:    [0]
+cent_rate_m_values:     [0.9]
+cent_rate_m_epochs:     [0]
+lambda_ema_values:      [0.996, 1]
+lambda_ema_epochs:      [0, 80]
+
+# Architecture hyperparameters
+in_channels:            3
+patch_size:             16
+embed_dim:              384 #768
+# Transformer parameters
+n_blocks:               6 #12
+# Multihead attention parameters
+n_heads:                6 #12
+attn_drop_p:            0. 
+attn_embed_drop_p:      0.
+# MLP parameters
+mlp_hidden_ratio:       2 #4.0
+mlp_drop_p:             0.

@@ -4,7 +4,7 @@ class MultiheadAttention(nn.Module):
     """
     This module performs the self attention mechanism
     """
-    def __init__(self, io_dim, n_heads=12, qkv_drop_p=0., embed_drop_p=0.):
+    def __init__(self, io_dim, n_heads=12, attn_drop_p=0., attn_embed_drop_p=0.):
         super().__init__()
 
         # Multi head attention differs from single head attention by having multiple
@@ -20,17 +20,18 @@ class MultiheadAttention(nn.Module):
         # We need an mapping which takes in the input vector and generates a query, key, and
         # value vector. Its faster to do this all together, rather than with 3 separate operations
         self.qkv_extractor = nn.Linear(self.io_dim, self.io_dim * 3, bias=True)
-        self.qkv_drop      = nn.Dropout(qkv_drop_p)
+        self.attn_drop     = nn.Dropout(attn_drop_p)
         # This linear mapping takes the concatenated head outputs and creates a representation
         self.embedder      = nn.Linear(self.io_dim, self.io_dim)
-        self.embedder_drop = nn.Dropout(embed_drop_p)
+        self.embedder_drop = nn.Dropout(attn_embed_drop_p)
 
-    def forward(self, x):
+    def forward(self, x, return_attention_only=False):
         """
         Takes a vector of shape (B, N+1, E), extracts the query, key and value, across multiple
-        heads, applies the qkv operation, softmaxes, and outputs a vector of (B, N+1, E)
-        """
-
+        heads, applies the qkv operation, softmaxes, and outputs a vector of (B, N+1, E), alongside
+        the self attention
+        """        
+        
         # Input shape. Note that T, the number of tokens, will be N (the number of patches) + 1, due
         # to the CLS token
         B, T, E = x.shape
@@ -50,15 +51,13 @@ class MultiheadAttention(nn.Module):
         # Firstly, dot the keys and queries, then softmax the result so that its a probability dist,
         # note that we have to swap the HD and T axes to allow for a matrix multiplication. The
         # dimension is (B, NH, T, T)
-        dp = (q @ k.transpose(-2, -1)) * self.scale
-        dp_pd = dp.softmax(dim=-1)
-        dp_pd = self.qkv_drop(dp_pd)
-
-        # REFACTOR ABOVE AS ATTN TODO
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
 
         # Secondly, multiply this result with the values, to get a scaled selection
         # in the shape (B, NH, T, HD)
-        scaled_sel = dp_pd @ v
+        scaled_sel = attn @ v
         # and then the shape (B, T, NH, HD)
         scaled_sel = scaled_sel.transpose(1,2)
 
@@ -70,7 +69,7 @@ class MultiheadAttention(nn.Module):
         output = self.embedder(scaled_sel)
         output = self.embedder_drop(output)
 
-        return output
+        return output, attn
 
 class MultiLayerPerceptron(nn.Module):
     """
@@ -106,7 +105,7 @@ class TransformerBlock(nn.Module):
     embedding, all the while using residual skip connections
     """
 
-    def __init__(self, io_dim, n_heads=12, qkv_drop_p=0., embed_drop_p=0.,
+    def __init__(self, io_dim, n_heads=12, attn_drop_p=0., attn_embed_drop_p=0.,
                  mlp_hidden_ratio=4.0, mlp_drop_p=0.):
         super().__init__()
 
@@ -116,8 +115,10 @@ class TransformerBlock(nn.Module):
         # learnable parameters
         self.norm1  = nn.LayerNorm(io_dim, eps=1e-6) # This epsilon matches the paper details
 
-        self.mhattn = MultiheadAttention(io_dim=io_dim, n_heads=n_heads,
-                                         qkv_drop_p=qkv_drop_p, embed_drop_p=embed_drop_p)
+        self.mhattn = MultiheadAttention(io_dim=io_dim, 
+                                         n_heads=n_heads,
+                                         attn_drop_p=attn_drop_p, 
+                                         attn_embed_drop_p=attn_embed_drop_p)
 
         self.norm2  = nn.LayerNorm(io_dim, eps=1e-6) # This epsilon matches the paper details
 
@@ -125,15 +126,24 @@ class TransformerBlock(nn.Module):
                                         hidden_ratio=mlp_hidden_ratio,
                                         drop_p=mlp_drop_p)
 
-    def forward(self, x):
+    def forward(self, x, return_attn_only=False):
         """
         Perform the forward pass operation, using residual links to propagate information. The
         shape again is preserved (B, T, E)
         """
-        x = x + self.mhattn(self.norm1(x))
 
-        # TODO: to visualise self attention maps we need the result of the multihead
-        # attention
+        # Start with layer normalisation and multihead attention
+        y = self.norm1(x)
+        y, attn = self.mhattn(y)
 
+        # Return the attention only as requested
+        if return_attn_only:
+            return attn
+            
+        # Apply the the first
+        x = x + y
+
+        # Apply the second layer normalisation and embedding with the 
+        # second skip connection
         x = x + self.mlp(self.norm2(x))
         return x

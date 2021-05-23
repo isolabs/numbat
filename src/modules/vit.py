@@ -55,8 +55,8 @@ class VisionTransformer(nn.Module):
         embed_dim=768,
         n_blocks=12,
         n_heads=12,
-        qkv_drop_p=0., 
-        embed_drop_p=0.,
+        attn_drop_p=0., 
+        attn_embed_drop_p=0.,
         mlp_hidden_ratio=4.0,
         mlp_drop_p=0.
     ):
@@ -84,7 +84,7 @@ class VisionTransformer(nn.Module):
         # Then we have a block of transformer blocks
         self.blocks = nn.ModuleList([
             TransformerBlock(io_dim=embed_dim, n_heads=n_heads, 
-                             qkv_drop_p=qkv_drop_p, embed_drop_p=embed_drop_p,
+                             attn_drop_p=attn_drop_p, attn_embed_drop_p=attn_embed_drop_p,
                              mlp_hidden_ratio=mlp_hidden_ratio, mlp_drop_p=mlp_drop_p)
             for i in range(n_blocks)
         ])
@@ -97,8 +97,6 @@ class VisionTransformer(nn.Module):
         # distributions as per the DINO paper's equation 1. A use case is to take these CLS
         # tokens and use an MLP head to classify them with labelled data (fine tuning), or 
         # if we want K != E
-        if n_classes > 0:
-            self.head = nn.Linear(embed_dim, n_classes)
         
     def get_pos_encoding(self, x, W, H):
         """ 
@@ -146,7 +144,7 @@ class VisionTransformer(nn.Module):
         interp_pos_encoding = torch.cat((cls_encoding.unsqueeze(0), interp_rem_encoding), dim=1)
         return interp_pos_encoding
         
-    def forward(self, x):
+    def forward(self, x, return_only_last_attn=False):
         """
         Perform the forward pass and return either logits or embeddings. Note that we do not expect
         jagged tensors here: i.e., a single batch can't have BOTH global and local views in it, only
@@ -168,17 +166,21 @@ class VisionTransformer(nn.Module):
         # TODO dropout on positional encodings
         
         # Then its just a matter of running it through all the blocks
-        for block in self.blocks:
-            x = block(x)
-        
+        n_blocks = len(self.blocks)
+        for i in range(n_blocks):
+            block = self.blocks[i]
+
+            # If we just want the last attention then return it from
+            # the last block
+            if i == n_blocks - 1 and return_only_last_attn:
+                return block(x, return_attn_only=True)
+            else:
+                # Otherwise just process as normal
+                x = block(x)
+
         # And the normalisation
         x = self.norm(x)
-
-        # Push it through the head too (this may be an identify, or an FC mapping from 
-        # E (embedding size) to K (num classes dimensions)
-        if self.head:
-            return self.head(x)
         
         # Then we just return the CLS tokens (first token of every batch - each should be 
         # E-dimensional)
-        return x[:, 0]
+        return x[:, 0, :]

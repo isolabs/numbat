@@ -1,11 +1,16 @@
 import math
 import gc
 import time
+import datetime
 import tqdm
+import os
 
 import torch
-from torchvision import transforms
-from torch.utils.data import DataLoader
+import torch.nn.functional as F
+
+import matplotlib as mpl 
+import matplotlib.pyplot as plt
+import numpy as np
 
 import utils
 import datawork as dw
@@ -77,18 +82,17 @@ def train_single_epoch(
                         temp_teacher,
                         cent_rate_m
                     )
-            total_loss_per_epoch += loss
 
             # Update the DINO loss computer's centering parameter
             loss_computer.update_center(out_teacher, cent_rate_m)
 
-        # Update the student with mixed precision loss prop
-        scaler.scale(loss).backward()
-        scaler.step(optimiser)
-        scaler.update()
+            # Update the student with mixed precision loss prop
+            scaler.scale(loss).backward()
+            scaler.step(optimiser)
+            scaler.update()
 
-    # Keep a running track of the loss
-    total_loss_per_epoch += loss
+            # Important to detach so as to not have a memory leak
+            total_loss_per_epoch += loss.detach()
 
     # Announce
     print("Epoch summary:")
@@ -106,7 +110,7 @@ def train_single_epoch(
         for param_q, param_k in zip(nn_student.parameters(), nn_teacher.parameters()):
             param_k.data.mul_(lambda_ema).add_((1 - lambda_ema) * param_q.detach().data)
 
-def dino_train(fp_config):
+def dino_train(fp_config, fp_save):
     """
     Performs a training experiment based on a provided configuration
     """
@@ -127,56 +131,24 @@ def dino_train(fp_config):
     # ================ DATA ================
     
     print("Loading training data ... ", end="")
-    
-    # This is our simple preprocessing chain
-    transform = transforms.Compose([
-        dw.TransformToFloat(),
-        dw.TransformNormalizeMars32k()
-    ])
-    # Apply these transformations and load
-    dataset = dw.DatasetMars32k(config['fp_data_mars32k'], transform=transform)
-
-    # Downsize the amount of data being used if appropriate
-    data_downsize = math.floor( len(dataset) * config['data_proportion'] )
-    dataset = torch.utils.data.Subset(dataset, range(data_downsize))
-    
-    # Make the split of data
-    n_train = math.floor( len(dataset) * config['train_test_ratio'] )
-    n_test  = ( len(dataset) - n_train )
-    train_set, test_set = torch.utils.data.random_split(dataset, [n_train, n_test])
-    
-    # Convert to dataloaders
-    batch_size = config['batch_size']
-    shuffle = config['shuffle_data']
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=shuffle)
-    test_loader  = DataLoader(test_set,  batch_size=batch_size, shuffle=shuffle)
+    train_loader, test_loader = dw.get_mars32k_train_test_dataloaders(
+        config['fp_data_mars32k'], 
+        config['data_proportion'], 
+        config['train_test_ratio'],
+        config['batch_size'],
+        config['perform_shuffle'])
     print("ready")
     
     # ================ STUDENT AND TEACHER NETWORKS ================
-        
-    # This helper function builds a vision transformer from the config file
-    def build_vision_transformer():
-        return vit.VisionTransformer(
-            global_size=config['global_size'],
-            n_classes=config['n_classes'],
-            in_channels=config['in_channels'],
-            patch_size=config['patch_size'],
-            embed_dim=config['embed_dim'],
-            n_blocks=config['n_blocks'],
-            n_heads=config['n_heads'],
-            qkv_drop_p=config['qkv_drop_p'], 
-            embed_drop_p=config['embed_drop_p'],
-            mlp_hidden_ratio=config['mlp_hidden_ratio'],
-            mlp_drop_p=config['mlp_drop_p'])
     
     # Create the student network
     print("Building student network ... ", end="")
-    nn_student = build_vision_transformer()
+    nn_student = utils.build_vision_transformer_from_config(config)
     print("ready")
     
     # Create the teacher network
     print("Building teacher network ... ", end="")
-    nn_teacher = build_vision_transformer()
+    nn_teacher = utils.build_vision_transformer_from_config(config)
     
     # Copy the student weights over to the teacher (initially they are the same)
     nn_teacher.load_state_dict(nn_student.state_dict())
@@ -240,7 +212,7 @@ def dino_train(fp_config):
     
     # Prepare the loss module
     print("Preparing DINO loss module ... ", end="")
-    loss_computer = LossComputerDINO(output_dim=config['n_classes'])
+    loss_computer = LossComputerDINO(output_dim=config['embed_dim'])
     loss_computer.to(device)
     print("ready")    
     
@@ -260,8 +232,6 @@ def dino_train(fp_config):
     print("ready")
         
     time.sleep(0.5)
-
-    print("This is where the fun begins!")
     
     # Perform as many epochs of training as required
     n_epochs = config['n_epochs']
@@ -290,5 +260,146 @@ def dino_train(fp_config):
             temp_student=temp_student,
             temp_teacher=temp_teacher,
             cent_rate_m=cent_rate_m,
-            lambda_ema=lambda_ema)
+            lambda_ema=lambda_ema
+        )
+    
+    # ================ TRAINING ================
+    
+    print("Saving experiment ... ", end="")
+    utils.save_experiment(
+        fp_save=fp_save, 
+        nn_student=nn_student, 
+        nn_teacher=nn_teacher, 
+        optimiser=optimiser, 
+        loss_computer=loss_computer, 
+        config=config
+    )
+    print("complete")
+    
+def inference_attention_maps(fp_experiment, fp_out, n_images=4):
+    """ 
+    Loads an experiment and performs inference to get attention maps
+    """
+        
+    # ================ DEVICE ================
+    
+    device = utils.report_and_get_device_gpu_preferred()
+    
+    # ================ LOAD ================
+
+    print("Building architecture and loading weights ... ", end="")
+
+    # Load the experiment at the provided filepath
+    experiment = torch.load(fp_experiment)
+
+    # Get everything that we'll need to inference
+    config             = experiment['config']
+    patch_size         = config['patch_size']
+    student_state_dict = experiment['student_state_dict']
+    teacher_state_dict = experiment['teacher_state_dict']
+
+    # Rebuild the network
+    model = utils.build_vision_transformer_from_config(config)
+    model.load_state_dict(student_state_dict)
+
+    # TODO: the teacher always outperforms the student right? Which one
+    # to use? Must test
+
+    # Set for inference
+    model.eval()
+    model.to(device)
+    print("ready")
+    
+    # ================ DATA ================
+    
+    print("Loading testing data ... ", end="")
+    train_loader, test_loader = dw.get_mars32k_train_test_dataloaders(
+        config['fp_data_mars32k'], 
+        config['data_proportion'], 
+        config['train_test_ratio'],
+        1, # We'll inference one image at a time for simplicity
+        config['perform_shuffle'])
+    print("ready")
+    
+    # ================ INFERENCE ================
+
+    print("Preparing inference procedure ... ", end="")
+
+    # Synchronise
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.reset_max_memory_allocated()
+    torch.cuda.synchronize()
+
+    # We'll save the inference results to a folder
+    # Append a timestamp (milliseconds not required) and file extension 
+    # to the filepath
+    timestamp = datetime.datetime.now().replace(microsecond=0)
+    folderpath = fp_out + "/inference " + str(timestamp)
+    os.mkdir(folderpath)
+
+    print("ready")
+        
+    time.sleep(0.5)
+
+    # Don't waste computation
+    with torch.no_grad():
+
+        # Only do a set number of images
+        for i, batch in tqdm.tqdm(enumerate(test_loader), 
+                        desc="Inferencing"):
+
+            # Strict limit
+            if i == n_images:
+                break
+
+            # We can feed in any image as long as its divisible by the patch
+            # size, so lets make this divisible by the patch size. Shape is
+            # currently (B=1, C, W, H)
+            image = batch['image']
+            new_w = image.shape[2] - image.shape[2] % patch_size
+            new_h = image.shape[3] - image.shape[3] % patch_size
+            image = image[:, :, :new_w, :new_h]
+
+            # The output map will be this big
+            w_map = image.shape[2] // patch_size
+            h_map = image.shape[3] // patch_size
+
+            # Put it on the desired device
+            image = image.to(device)
+
+            # Get the output, shape is (B=1, n_heads, X, X)
+            attn = model(image, return_only_last_attn=True)
+            n_heads = attn.shape[1]
+
+            # We only want the CLS token SELF attention, so not the heads
+            # attention on itself in the last dim, and only the first dim on
+            # the second to last dim
+            attn = attn[0, :, 0, 1:]                    # (B=1, n_heads, 1, X - 1)
+            attn = attn.reshape(n_heads, w_map, h_map)  # (NH, WMAP, HMAP)
+            attn = attn.unsqueeze(0)                    # (B=1, NH, WMAP, HMAP)
+
+            # Scale it up to an image and move the final maps to the cpu as 
+            # numpy matrices so they can be plotted easily
+            attn_map_scaled = F.interpolate(
+                attn,
+                scale_factor=patch_size,
+                mode="nearest"
+            ).cpu().numpy() # (B=1, NH, ~W, ~H)
+            attn_map_scaled = attn_map_scaled[0] # (NH, ~W, ~H)
+
+            # Average across the heads to get a 2D map (~W, ~H)
+            attn_map_2d = np.mean(attn_map_scaled, axis=0)
+            
+            # Save the images to the provided filepath in a folder
+            plt.imsave(
+                f"{folderpath}/{i}.png", 
+                arr=attn_map_2d,
+                cmap="bone",
+                format="png")
+
+
+
+
+
     
