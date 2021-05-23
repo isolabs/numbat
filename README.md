@@ -2,6 +2,14 @@
 
 A transformer based approach to learning in the context of offworld terrain images. The approach leverages self-distillation with no supervision; it learns largely from unsupervised images.
 
+## environment
+
+This repository has been tested with CUDA 11.1 and the library versions listed in ```env.yml```. Recreate the environment using conda with the following command:
+
+```console
+conda env create --name numbat --file=env.yml
+```
+
 ## data
 
 ### mars32k
