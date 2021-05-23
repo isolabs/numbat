@@ -25,7 +25,6 @@ if __name__ == "__main__":
         f"{fp_experiments}/remote-2"
     )
     
-    
     """
     # Perform inferencing
     routines.inference_attention_maps(
