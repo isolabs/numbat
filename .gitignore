@@ -1,6 +1,7 @@
 data/**
 logs/**
 experiments/**
-__pycache__
+__pycache__/
+*.pyc
 .ipynb_checkpoints
 !.gitkeep

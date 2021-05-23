@@ -2,7 +2,7 @@
 global_size:            224
 local_size:             96
 n_global_crops:         2
-n_local_crops:          6 #8
+n_local_crops:          4 #8
 n_classes:              0
 centering_rate_m:       0.9
 
@@ -14,10 +14,10 @@ fp_data_mars32k:        '/home/ubuntu/numbat/data/mars32k'
 data_proportion:        1.0
 train_test_ratio:       0.9
 perform_shuffle:        True
-batch_size:             72 #1024
+batch_size:             96 #1024
 # Schedules
 lr_values:              [0.00001, 0.000125, 0.000001] # lr ramped to 0.0005 ∗ batchsize/256 over 10 epochs, adamw opt
-lr_epochs:              [0, 10, 64]
+lr_epochs:              [0, 6, 64]
 weight_decay_values:    [0.04, 0.4] # wd follows a cosine schedule from 0.04 to 0.4
 weight_decay_epochs:    [0, 64]
 temp_student_values:    [0.1] # Ts is set to 0.1
@@ -34,7 +34,7 @@ in_channels:            3
 patch_size:             16
 embed_dim:              384
 # Transformer parameters
-n_blocks:               8
+n_blocks:               6
 # Multihead attention parameters
 n_heads:                12
 attn_drop_p:            0. 
