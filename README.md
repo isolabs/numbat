@@ -18,6 +18,8 @@ conda env export | grep -v "^prefix: " > env.yml
 
 ## data
 
+The datasets used here are publically available offworld terrain image datasets.
+
 ### mars32k
 
 The mars32k dataset is an unlabelled set of terrain images available here https://dominikschmidt.xyz/mars32k/. It contains images taken with Curiosity's Mastcam camera.
