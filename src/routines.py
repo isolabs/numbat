@@ -31,13 +31,15 @@ def train_single_epoch(
         train_loader, 
         multicropper,
         learning_rate,
+        weight_decay,
         temp_student,
         temp_teacher,
         cent_rate_m,
         lambda_ema
     ):
     """
-    Train the provided networks in the DINO framework for a single epoch
+    Train the provided networks in the DINO framework for a single epoch. Returns
+    the training metrics
     """
 
     # We'll log some stuff
@@ -52,7 +54,8 @@ def train_single_epoch(
 
         # Update the learning rate
         for g in optimiser.param_groups:
-            g['lr'] = learning_rate
+            g['lr']           = learning_rate
+            g['weight_decay'] = weight_decay
 
         # Account for mixed precision if using
         with torch.cuda.amp.autocast(enabled=mixed_precision):
@@ -94,21 +97,34 @@ def train_single_epoch(
             # Important to detach so as to not have a memory leak
             total_loss_per_epoch += loss.detach()
 
-    # Announce
-    print("Epoch summary:")
-    print(f" - total loss: {total_loss_per_epoch}")
-    print(f" - learning rate: {learning_rate}")
-    print(f" - student temperature: {temp_student}")
-    print(f" - teacher temperature: {temp_teacher}")
-    print(f" - centering rate parameter: {cent_rate_m}")
-    print(f" - lambda teacher update proportion: {lambda_ema}")
-
     # Use exponential moving average (EMA, or momentum encoder) of the student 
     # weights to update the teacher. Importantly - do not perform these calculations
     # with the intention to calculation gradients (its a waste)
     with torch.no_grad():
         for param_q, param_k in zip(nn_student.parameters(), nn_teacher.parameters()):
             param_k.data.mul_(lambda_ema).add_((1 - lambda_ema) * param_q.detach().data)
+
+    # Announce
+    print("Epoch summary:")
+    print(f" - total loss: {total_loss_per_epoch}")
+    print(f" - learning rate: {learning_rate}")
+    print(f" - weight decay: {weight_decay}")
+    print(f" - student temperature: {temp_student}")
+    print(f" - teacher temperature: {temp_teacher}")
+    print(f" - centering rate parameter: {cent_rate_m}")
+    print(f" - lambda teacher update proportion: {lambda_ema}")
+
+    # Return the metrics
+    metrics = {
+        "total_loss_per_epoch": total_loss_per_epoch,
+        "learning_rate":        learning_rate,
+        "weight_decay":         weight_decay,
+        "temp_student":         temp_student,
+        "temp_teacher":         temp_teacher,
+        "cent_rate_m":          cent_rate_m,
+        "lambda_ema":           lambda_ema,
+    }
+    return metrics
 
 def dino_train(fp_config, fp_save):
     """
@@ -176,8 +192,10 @@ def dino_train(fp_config, fp_save):
     
     # ================ SCHEDULERS ================
     
-    # Create learning rate schedulers
+    # Create learning rate scheduler and weight decay scheduler for the optimiser
     sch_lr = utils.LinearPiecewiseScheduler(config['lr_values'], config['lr_epochs'])
+    sch_wd = utils.LinearPiecewiseScheduler(config['weight_decay_values'], 
+                                            config['weight_decay_epochs'])
     
     # Create temperature schedulers
     sch_temp_student = utils.LinearPiecewiseScheduler(config['temp_student_values'], 
@@ -204,8 +222,9 @@ def dino_train(fp_config, fp_save):
     print("Preparing optimiser ... ", end="")
     # Note that it is recommended to only construct this after the 
     # models are on the GPU (if using a GPU)
-    optimiser = torch.optim.Adam(nn_student.parameters(), 
-                                 lr=sch_lr.get_value(0))
+    optimiser = torch.optim.AdamW(nn_student.parameters(), 
+                                  lr=sch_lr.get_value(0),
+                                  weight_decay=sch_wd.get_value(0))
     print("ready")
     
     # ================ DINO LOSS ================
@@ -234,17 +253,19 @@ def dino_train(fp_config, fp_save):
     time.sleep(0.5)
     
     # Perform as many epochs of training as required
+    metrics = []
     n_epochs = config['n_epochs']
     for epoch_idx in range(n_epochs):
         # Get the schedule values
         learning_rate   = sch_lr.get_value(epoch_idx)
+        weight_decay    = sch_wd.get_value(epoch_idx)
         temp_student    = sch_temp_student.get_value(epoch_idx)
         temp_teacher    = sch_temp_teacher.get_value(epoch_idx)
         cent_rate_m     = sch_cent_rate_m.get_value(epoch_idx)
         lambda_ema      = sch_lambda_ema.get_value(epoch_idx)
 
         # And train a single epoch
-        train_single_epoch(
+        epoch_metrics = train_single_epoch(
             epoch_idx=epoch_idx, 
             n_epochs=n_epochs, 
             device=device,
@@ -257,11 +278,14 @@ def dino_train(fp_config, fp_save):
             train_loader=train_loader, 
             multicropper=multicropper,
             learning_rate=learning_rate,
+            weight_decay=weight_decay,
             temp_student=temp_student,
             temp_teacher=temp_teacher,
             cent_rate_m=cent_rate_m,
             lambda_ema=lambda_ema
         )
+
+        metrics.append(epoch_metrics)
     
     # ================ TRAINING ================
     
@@ -272,7 +296,8 @@ def dino_train(fp_config, fp_save):
         nn_teacher=nn_teacher, 
         optimiser=optimiser, 
         loss_computer=loss_computer, 
-        config=config
+        config=config,
+        metrics=metrics
     )
     print("complete")
     
@@ -335,7 +360,7 @@ def inference_attention_maps(fp_experiment, fp_out, n_images=4):
     # Append a timestamp (milliseconds not required) and file extension 
     # to the filepath
     timestamp = datetime.datetime.now().replace(microsecond=0)
-    folderpath = fp_out + "/inference " + str(timestamp)
+    folderpath = f"{fp_out}/inference {n_images}-ims {timestamp}"
     os.mkdir(folderpath)
 
     print("ready")
@@ -347,7 +372,8 @@ def inference_attention_maps(fp_experiment, fp_out, n_images=4):
 
         # Only do a set number of images
         for i, batch in tqdm.tqdm(enumerate(test_loader), 
-                        desc="Inferencing"):
+                                  desc="Inferencing",
+                                  total=n_images):
 
             # Strict limit
             if i == n_images:
@@ -393,9 +419,17 @@ def inference_attention_maps(fp_experiment, fp_out, n_images=4):
             
             # Save the images to the provided filepath in a folder
             plt.imsave(
-                f"{folderpath}/{i}.png", 
+                f"{folderpath}/inf-{i}.png", 
                 arr=attn_map_2d,
                 cmap="bone",
+                format="png")
+
+            image_in = image[0].cpu().numpy()
+            image_in = image_in.transpose(1, 2, 0)
+            image_in = np.interp(image_in, (image_in.min(), image_in.max()), (0, +1))
+            plt.imsave(
+                f"{folderpath}/im-{i}.png", 
+                arr=image_in,
                 format="png")
 
 

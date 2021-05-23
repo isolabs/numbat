@@ -28,7 +28,7 @@ It can be downloaded and unzipped as required using the following commands:
 
 ```console
 cd data
-curl -O http://download1979.mediafire.com/tnzs5gujohyg/r49yc8jvl26tjo8/mars32k.zip
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1yeLkE1p5oeCqa5pA7tc0tI4eoyvjZc5X' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1yeLkE1p5oeCqa5pA7tc0tI4eoyvjZc5X" -O mars32k.zip && rm -rf /tmp/cookies.txt
 unzip mars32k.zip
 ```
 

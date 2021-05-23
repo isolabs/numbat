@@ -110,7 +110,7 @@ class LinearPiecewiseScheduler():
         step = max(step, 0)
         return self.values_at_steps[step]
 
-def save_experiment(fp_save, nn_student, nn_teacher, optimiser, loss_computer, config):
+def save_experiment(fp_save, nn_student, nn_teacher, optimiser, loss_computer, config, metrics):
     """ 
     Save everything needed to reproduce / extend the experiment to a file
     """
@@ -126,5 +126,6 @@ def save_experiment(fp_save, nn_student, nn_teacher, optimiser, loss_computer, c
         'teacher_state_dict': nn_teacher.state_dict(),
         'optimiser_state_dict': optimiser.state_dict(),
         'loss_computer_state_dict': loss_computer.state_dict(),
-        'config': config
+        'config': config,
+        'metrics': metrics
     }, filepath)
