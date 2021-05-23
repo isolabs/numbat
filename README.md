@@ -10,6 +10,12 @@ This repository has been tested with CUDA 11.1 and the library versions listed i
 conda env create --name numbat --file=env.yml
 ```
 
+The ```env.yml``` file was written using the following command:
+
+```console
+conda env export | grep -v "^prefix: " > env.yml
+```
+
 ## data
 
 ### mars32k
