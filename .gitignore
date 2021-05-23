@@ -1,5 +1,6 @@
 data/**
 logs/**
 experiments/**
+__pycache__
 .ipynb_checkpoints
 !.gitkeep
