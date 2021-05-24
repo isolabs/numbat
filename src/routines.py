@@ -95,7 +95,7 @@ def train_single_epoch(
             scaler.update()
 
             # Important to detach so as to not have a memory leak
-            total_loss_per_epoch += loss.detach()
+            total_loss_per_epoch += loss.item()
 
     # Use exponential moving average (EMA, or momentum encoder) of the student 
     # weights to update the teacher. Importantly - do not perform these calculations
@@ -116,6 +116,7 @@ def train_single_epoch(
 
     # Return the metrics
     metrics = {
+        "epoch_idx":            epoch_idx,
         "total_loss_per_epoch": total_loss_per_epoch,
         "learning_rate":        learning_rate,
         "weight_decay":         weight_decay,
@@ -320,6 +321,7 @@ def inference_attention_maps(fp_experiment, fp_out, n_images=4):
     # Get everything that we'll need to inference
     config             = experiment['config']
     patch_size         = config['patch_size']
+    metrics            = experiment['metrics']
     student_state_dict = experiment['student_state_dict']
     teacher_state_dict = experiment['teacher_state_dict']
 

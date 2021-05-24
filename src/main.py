@@ -20,17 +20,17 @@ if __name__ == "__main__":
     
     # Perform a training experiment under a given experimental configuration,
     # and save it
-    routines.dino_train(
-        f"{fp_configs}/remote-2.yml", 
-        f"{fp_experiments}/remote-2"
-    )
-    
     """
+    routines.dino_train(
+        f"{fp_configs}/remote-3.yml", 
+        f"{fp_experiments}/remote-3"
+    )
+    """
+
     # Perform inferencing
     routines.inference_attention_maps(
-        f"{fp_experiments}/remote-1 2021-05-23 12:05:19.pt",
+        f"{fp_experiments}/remote-2 2021-05-24 08:30:49.pt",
         f"{fp_logs}",
         n_images=3200
     )
-    """
     
