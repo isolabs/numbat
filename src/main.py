@@ -20,7 +20,7 @@ if __name__ == "__main__":
     
     # Perform a training experiment under a given experimental configuration,
     # and save it
-    """
+    
     routines.dino_train(
         f"{fp_configs}/remote-3.yml", 
         f"{fp_experiments}/remote-3"
@@ -33,4 +33,5 @@ if __name__ == "__main__":
         f"{fp_logs}",
         n_images=3200
     )
+    """
     

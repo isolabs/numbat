@@ -2,7 +2,7 @@
 global_size:            224
 local_size:             96
 n_global_crops:         2
-n_local_crops:          4 #8
+n_local_crops:          2 #8
 n_classes:              0
 centering_rate_m:       0.9
 
@@ -14,7 +14,7 @@ fp_data_mars32k:        '/home/ubuntu/numbat/data/mars32k'
 data_proportion:        1.0
 train_test_ratio:       0.9
 perform_shuffle:        True
-batch_size:             96 #1024
+batch_size:             64 #1024
 # Schedules
 lr_values:              [0.000125, 0.000125, 0.000001] # lr ramped to 0.0005 ∗ batchsize/256 over 10 epochs, adamw opt
 lr_epochs:              [0, 6, 64]
@@ -32,7 +32,7 @@ lambda_ema_epochs:      [0, 80]
 # Architecture hyperparameters
 in_channels:            3
 patch_size:             16
-embed_dim:              384
+embed_dim:              768
 # Transformer parameters
 n_blocks:               6
 # Multihead attention parameters
