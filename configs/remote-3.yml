@@ -1,3 +1,7 @@
+# I/O
+fp_save:                '/home/ubuntu/numbat/experiments/remote-3'
+fp_data_mars32k:        '/home/ubuntu/numbat/data/mars32k'
+
 # DINO parameterisation
 global_size:            224
 local_size:             96
@@ -10,7 +14,6 @@ centering_rate_m:       0.9
 n_epochs:               64 #300
 mixed_precision:        False
 # Data loading
-fp_data_mars32k:        '/home/ubuntu/numbat/data/mars32k'
 data_proportion:        1.0
 train_test_ratio:       0.9
 perform_shuffle:        True

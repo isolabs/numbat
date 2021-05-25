@@ -22,8 +22,7 @@ if __name__ == "__main__":
     # and save it
     
     routines.dino_train(
-        f"{fp_configs}/remote-3.yml", 
-        f"{fp_experiments}/remote-3"
+        f"{fp_configs}/remote-3.yml"
     )
     """
 

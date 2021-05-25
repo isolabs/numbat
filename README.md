@@ -36,3 +36,10 @@ unzip mars32k.zip
 
 The msl dataset is a labelled classification dataset available here https://zenodo.org/record/1049137#.YKLKXahKiPq. It contains train, test, and validation sets according to their Martian day of acquisition.
 
+### HiRISE
+
+The Mars Orbital Image HiRISE dataset is a labelled classification dataset available here https://zenodo.org/record/4002935#.YKwVMahKiPo.
+
+## improvements
+
+* Multi-GPU parallelisation: https://pytorch.org/tutorials/beginner/dist_overview.html.

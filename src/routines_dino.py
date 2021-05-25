@@ -14,9 +14,9 @@ import numpy as np
 
 import utils
 import datawork as dw
-import modules.vit as vit
-from modules.multicropper import MultiCropper
-from modules.loss import LossComputerDINO
+import dino_modules.vit as vit
+from dino_modules.multicropper import MultiCropper
+from dino_modules.loss import LossComputerDINO
 
 def train_single_epoch(
         epoch_idx, 
@@ -45,17 +45,17 @@ def train_single_epoch(
     # We'll log some stuff
     total_loss_per_epoch = 0
 
+    # Update the learning rate
+    for g in optimiser.param_groups:
+        g['lr']           = learning_rate
+        g['weight_decay'] = weight_decay
+
     # Load the batches from the data loader
     for i, batch in tqdm.tqdm(enumerate(train_loader), total=len(train_loader),
                         desc=f"Epoch {epoch_idx + 1}/{n_epochs}"):
 
         # Zero the parameter gradients
         optimiser.zero_grad()
-
-        # Update the learning rate
-        for g in optimiser.param_groups:
-            g['lr']           = learning_rate
-            g['weight_decay'] = weight_decay
 
         # Account for mixed precision if using
         with torch.cuda.amp.autocast(enabled=mixed_precision):
@@ -127,9 +127,9 @@ def train_single_epoch(
     }
     return metrics
 
-def dino_train(fp_config, fp_save):
+def train(fp_config):
     """
-    Performs a training experiment based on a provided configuration
+    Performs a DINO training experiment based on a provided configuration
     """
     
     # ================ CONFIGURATION ================
@@ -240,6 +240,8 @@ def dino_train(fp_config, fp_save):
     
     print("Preparing training procedure ... ", end="")
 
+    fp_save = config['fp_save']
+
     # Create a scalar for mixed precision as 
     # desired (no op if flag is false) 
     scaler = torch.cuda.amp.GradScaler(enabled=config['mixed_precision'])
@@ -291,7 +293,7 @@ def dino_train(fp_config, fp_save):
         # ================ SAVING ================
         
         print("Saving experiment ... ", end="")
-        utils.save_experiment(
+        utils.save_dino_experiment(
             fp_save=fp_save, 
             nn_student=nn_student, 
             nn_teacher=nn_teacher, 
@@ -327,7 +329,7 @@ def inference_attention_maps(fp_experiment, fp_out, n_images=4):
 
     # Rebuild the network
     model = utils.build_vision_transformer_from_config(config)
-    model.load_state_dict(student_state_dict)
+    model.load_state_dict(teacher_state_dict)
 
     # TODO: the teacher always outperforms the student right? Which one
     # to use? Must test

@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
-from modules.transformer_block import TransformerBlock
+from dino_modules.transformer_block import TransformerBlock
 
 class PatchEmbedder(nn.Module):
     """ 
