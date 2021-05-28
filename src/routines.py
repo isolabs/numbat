@@ -31,7 +31,7 @@ def train_single_epoch(
         train_loader, 
         multicropper,
         learning_rate,
-        weight_decay,
+        #weight_decay,
         temp_student,
         temp_teacher,
         cent_rate_m,
@@ -45,17 +45,19 @@ def train_single_epoch(
     # We'll log some stuff
     total_loss_per_epoch = 0
 
+    # Update the learning rate
+    for g in optimiser.param_groups:
+        g['lr']           = learning_rate
+        #g['weight_decay'] = weight_decay
+
+    n_batches = 0
+
     # Load the batches from the data loader
     for i, batch in tqdm.tqdm(enumerate(train_loader), total=len(train_loader),
                         desc=f"Epoch {epoch_idx + 1}/{n_epochs}"):
 
         # Zero the parameter gradients
         optimiser.zero_grad()
-
-        # Update the learning rate
-        for g in optimiser.param_groups:
-            g['lr']           = learning_rate
-            g['weight_decay'] = weight_decay
 
         # Account for mixed precision if using
         with torch.cuda.amp.autocast(enabled=mixed_precision):
@@ -96,6 +98,7 @@ def train_single_epoch(
 
             # Important to detach so as to not have a memory leak
             total_loss_per_epoch += loss.item()
+            n_batches += 1
 
     # Use exponential moving average (EMA, or momentum encoder) of the student 
     # weights to update the teacher. Importantly - do not perform these calculations
@@ -104,11 +107,13 @@ def train_single_epoch(
         for param_q, param_k in zip(nn_student.parameters(), nn_teacher.parameters()):
             param_k.data.mul_(lambda_ema).add_((1 - lambda_ema) * param_q.detach().data)
 
+    total_loss_per_epoch /= n_batches
+
     # Announce
     print("Epoch summary:")
-    print(f" - total loss: {total_loss_per_epoch}")
+    print(f" - loss per batch: {total_loss_per_epoch}")
     print(f" - learning rate: {learning_rate}")
-    print(f" - weight decay: {weight_decay}")
+    #print(f" - weight decay: {weight_decay}")
     print(f" - student temperature: {temp_student}")
     print(f" - teacher temperature: {temp_teacher}")
     print(f" - centering rate parameter: {cent_rate_m}")
@@ -119,7 +124,7 @@ def train_single_epoch(
         "epoch_idx":            epoch_idx,
         "total_loss_per_epoch": total_loss_per_epoch,
         "learning_rate":        learning_rate,
-        "weight_decay":         weight_decay,
+        #"weight_decay":         weight_decay,
         "temp_student":         temp_student,
         "temp_teacher":         temp_teacher,
         "cent_rate_m":          cent_rate_m,
@@ -195,8 +200,8 @@ def dino_train(fp_config, fp_save):
     
     # Create learning rate scheduler and weight decay scheduler for the optimiser
     sch_lr = utils.LinearPiecewiseScheduler(config['lr_values'], config['lr_epochs'])
-    sch_wd = utils.LinearPiecewiseScheduler(config['weight_decay_values'], 
-                                            config['weight_decay_epochs'])
+    #sch_wd = utils.LinearPiecewiseScheduler(config['weight_decay_values'], 
+    #                                        config['weight_decay_epochs'])
     
     # Create temperature schedulers
     sch_temp_student = utils.LinearPiecewiseScheduler(config['temp_student_values'], 
@@ -223,9 +228,8 @@ def dino_train(fp_config, fp_save):
     print("Preparing optimiser ... ", end="")
     # Note that it is recommended to only construct this after the 
     # models are on the GPU (if using a GPU)
-    optimiser = torch.optim.AdamW(nn_student.parameters(), 
-                                  lr=sch_lr.get_value(0),
-                                  weight_decay=sch_wd.get_value(0))
+    optimiser = torch.optim.Adam(nn_student.parameters(), 
+                                  lr=sch_lr.get_value(0))
     print("ready")
     
     # ================ DINO LOSS ================
@@ -259,7 +263,7 @@ def dino_train(fp_config, fp_save):
     for epoch_idx in range(n_epochs):
         # Get the schedule values
         learning_rate   = sch_lr.get_value(epoch_idx)
-        weight_decay    = sch_wd.get_value(epoch_idx)
+        #weight_decay    = sch_wd.get_value(epoch_idx)
         temp_student    = sch_temp_student.get_value(epoch_idx)
         temp_teacher    = sch_temp_teacher.get_value(epoch_idx)
         cent_rate_m     = sch_cent_rate_m.get_value(epoch_idx)
@@ -279,7 +283,7 @@ def dino_train(fp_config, fp_save):
             train_loader=train_loader, 
             multicropper=multicropper,
             learning_rate=learning_rate,
-            weight_decay=weight_decay,
+            #weight_decay=weight_decay,
             temp_student=temp_student,
             temp_teacher=temp_teacher,
             cent_rate_m=cent_rate_m,
