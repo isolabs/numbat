@@ -9,7 +9,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import tqdm
 
-import modules.vit as vit
+import dino_modules.vit as vit
 
 def plot_instance(inst):
     """ 
@@ -135,6 +135,31 @@ def save_dino_experiment(
         'teacher_state_dict': nn_teacher.state_dict(),
         'optimiser_state_dict': optimiser.state_dict(),
         'loss_computer_state_dict': loss_computer.state_dict(),
+        'config': config,
+        'metrics': metrics
+    }, filepath)
+
+def save_fine_experiment(
+        fp_save, 
+        model, 
+        optimiser, 
+        config, 
+        metrics
+    ):
+    
+    """ 
+    Save everything needed to reproduce / extend the experiment to a file
+    """
+
+    # Append a timestamp (milliseconds not required) and file extension 
+    # to the filepath
+    timestamp = datetime.datetime.now().replace(microsecond=0)
+    filepath = fp_save + (" " + str(timestamp) + ".pt")
+
+    # Save it at the directory
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimiser_state_dict': optimiser.state_dict(),
         'config': config,
         'metrics': metrics
     }, filepath)

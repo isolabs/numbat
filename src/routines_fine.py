@@ -3,20 +3,32 @@ import gc
 import time
 import tqdm
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-def train_single_epoch(
+import utils 
+import fine_tuners
+import datawork as dw
+
+
+def train_test_single_epoch(
         epoch_idx, 
         n_epochs, 
         device,
         optimiser,
         scaler,
         mixed_precision,
+        model,
+        loss_computer,
         train_loader, 
+        val_loader,
+        test_loader,
         learning_rate,
     ):
+
     """
-    Train the provided networks in the DINO framework for a single epoch. Returns
-    the training metrics
+    Train the provided fine tuning network on labelled data. Generate test accuracy
     """
 
     # We'll log some stuff
@@ -36,27 +48,15 @@ def train_single_epoch(
         # Account for mixed precision if using
         with torch.cuda.amp.autocast(enabled=mixed_precision):
 
-            # Get the global and local views from the images
-            global_crops, local_crops = multicropper.crop(batch['image'])
+            # Get the xs and ys and calculate the loss via MSE
+            x = batch['image']
+            y = batch['label']
+            x = x.to(device)
+            y = y.to(device)
+            yhat = model(x).to(device)
 
-            # Move them to the desired device
-            # Note that the data version of the 'to' function is not 
-            # an in place operation
-            global_crops = global_crops.to(device)
-            local_crops = local_crops.to(device)
-
-            # Push the global views through the teacher network
-            out_teacher = nn_teacher(global_crops)
-
-            # Push all the views through the student network
-            out_student_global = nn_student(global_crops)
-            out_student_local  = nn_student(local_crops)
-
-            # Calculate the task's loss 
-            loss = 99
-
-            # Update the DINO loss computer's centering parameter
-            loss_computer.update_center(out_teacher, cent_rate_m)
+            # Calculate the task's loss (must convert to one hot encoding)
+            loss = loss_computer( yhat, F.one_hot(y, num_classes=yhat.shape[1]).float() )
 
             # Update the student with mixed precision loss prop
             scaler.scale(loss).backward()
@@ -66,16 +66,55 @@ def train_single_epoch(
             # Important to detach so as to not have a memory leak
             total_loss_per_epoch += loss.item()
 
+    # Perform a test run and measure the accuracy
+
+    def calculate_accuracy(loader, desc):
+        """ 
+        Compare the ground truth and return the test accuracy
+        """
+
+        num_true = 0
+
+        # Load the batches from the data loader
+        for i, batch in tqdm.tqdm(enumerate(loader), total=len(loader),
+                            desc=desc):
+            
+            # Get the data and compare the prediction to the truth
+            x = batch['image']
+            y = batch['label']
+            x = x.to(device)
+            y = y.to(device)
+
+            # Must get the class index with the max value before comparison
+            correct = torch.eq( torch.argmax(model(x), dim=1), y )
+
+            # Aggregate results
+            num_true += torch.sum(correct).item()
+
+        # Calculate and return the accuracy
+        accuracy = num_true / (len(loader.dataset)) * 100
+        return accuracy
+
+    # Swap model to evaluation mode before testing, then back again
+    model.eval()
+    val_accuracy  = calculate_accuracy(val_loader, "Validating")
+    test_accuracy = calculate_accuracy(test_loader, "Testing")
+    model.train()
+
     # Announce
     print("Epoch summary:")
     print(f" - total loss: {total_loss_per_epoch}")
     print(f" - learning rate: {learning_rate}")
+    print(f" - validation accuracy: {val_accuracy} %")
+    print(f" - test accuracy: {test_accuracy} %")
 
     # Return the metrics
     metrics = {
         "epoch_idx":            epoch_idx,
         "total_loss_per_epoch": total_loss_per_epoch,
         "learning_rate":        learning_rate,
+        "val_accuracy":         val_accuracy,
+        "test_accuracy":        test_accuracy,
     }
     return metrics
 
@@ -100,26 +139,37 @@ def train(fp_config):
     # ================ DATA ================
     
     print("Loading training data ... ", end="")
-    # MSL
-    # TODO
+    # MSL datasets come predefined
+    dl_train, dl_test, dl_val = dw.get_msl_train_test_val_dataloaders(config['fp_data_msl'], config['batch_size'])
     print("ready")
     
     # ================ LOAD PRETRAINED ================
-    
-    # TODO: will need to load the saved transformer experiment config
 
     print("Loading DINO network ... ", end="")
-    nn_student = utils.build_vision_transformer_from_config(fp_config_dino)
+    
+    # Will need to load the saved transformer experiment config
+    dino_experiment = torch.load(config['fp_load_dino_model'])
+    # Then build the matching architecture
+    nn_dino = utils.build_vision_transformer_from_config(dino_experiment['config'])
+    # Then load the weights
+    nn_dino.load_state_dict(dino_experiment['teacher_state_dict'])
     print("ready")
     
     # ================ WRAP FINETUNE ================
 
-    # TODO: take CLS token and feed into a feedforward NN and output to
+    # Take CLS token and feed into a feedforward NN and output to
     # a classification layer
-    
     print("Wrapping DINO network in classification network ... ", end="")
-    
+    fine_tuner = fine_tuners.FineTuner( vit=nn_dino, 
+                                        vit_embed_dim=dino_experiment['config']['embed_dim'], 
+                                        hidden_sizes=config['hidden_sizes'], 
+                                        n_classes=config['n_classes'])
+    fine_tuner.to(device)
     print("ready")
+
+    # Loss is simple here
+    loss_computer = nn.MSELoss()
+    loss_computer.to(device)
     
     # ================ SCHEDULERS ================
     
@@ -132,7 +182,7 @@ def train(fp_config):
     print("Preparing optimiser ... ", end="")
     # Note that it is recommended to only construct this after the 
     # models are on the GPU (if using a GPU)
-    optimiser = torch.optim.Adam(nn_student.parameters(), 
+    optimiser = torch.optim.Adam(fine_tuner.parameters(), 
                                  lr=sch_lr.get_value(0))
     print("ready")
     
@@ -154,6 +204,7 @@ def train(fp_config):
     print("ready")
         
     time.sleep(0.5)
+    print("'A restless tongue to classify'")
     
     # Perform as many epochs of training as required
     metrics = []
@@ -163,15 +214,18 @@ def train(fp_config):
         learning_rate   = sch_lr.get_value(epoch_idx)
 
         # And train a single epoch
-        epoch_metrics = train_single_epoch(
+        epoch_metrics = train_test_single_epoch(
             epoch_idx=epoch_idx, 
             n_epochs=n_epochs, 
             device=device,
             scaler=scaler,
             mixed_precision=config['mixed_precision'],
             optimiser=optimiser,
-            model=model, 
-            train_loader=train_loader, 
+            model=fine_tuner, 
+            loss_computer=loss_computer,
+            train_loader=dl_train, 
+            val_loader=dl_val,
+            test_loader=dl_test,
             learning_rate=learning_rate
         )
 
@@ -182,9 +236,8 @@ def train(fp_config):
         print("Saving experiment ... ", end="")
         utils.save_fine_experiment(
             fp_save=fp_save, 
-            model=model,
+            model=fine_tuner,
             optimiser=optimiser, 
-            loss_computer=loss_computer, 
             config=config,
             metrics=metrics
         )

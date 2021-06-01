@@ -254,6 +254,7 @@ def train(fp_config):
     print("ready")
         
     time.sleep(0.5)
+    print("I'm your huckleberry!")
     
     # Perform as many epochs of training as required
     metrics = []
