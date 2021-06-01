@@ -5,14 +5,14 @@ fp_data_msl:            '/home/prang/dev/numbat/data/msl-images'
 
 # Architecture parameterisation
 n_classes:              25 # MSL
-hidden_sizes:           [256, 128]
+hidden_sizes:           [512, 196, 64]
 
 # Training hyperparameters
 n_epochs:               64 #300
 mixed_precision:        False
 # Data loading
 perform_shuffle:        False
-batch_size:             32
+batch_size:             48
 # Schedules
-lr_values:              [0.0001, 0.00001] 
-lr_epochs:              [0, 32]
+lr_values:              [0.000005, 0.0000001] 
+lr_epochs:              [0, 64]
