@@ -34,5 +34,5 @@ if __name__ == "__main__":
     """
 
     # Perform a fine tuning experiment
-    routines_fine.train(f"{fp_configs}/fine-3.yml")
+    routines_fine.train(f"{fp_configs}/fine-4.yml")
     

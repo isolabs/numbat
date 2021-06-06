@@ -1,5 +1,5 @@
 # I/O
-fp_save:                '/home/prang/dev/numbat/experiments/fine-1/fine-1'
+fp_save:                '/home/prang/dev/numbat/experiments/fine-3/fine-3'
 fp_load_dino_model:     '/home/prang/dev/numbat/experiments/remote-5/remote-5 2021-05-27 00:23:19.pt'
 fp_data_msl:            '/home/prang/dev/numbat/data/msl-images'
 
@@ -8,11 +8,11 @@ n_classes:              25 # MSL
 hidden_sizes:           [512, 196, 64]
 
 # Training hyperparameters
-n_epochs:               64 #300
+n_epochs:               256 #300
 mixed_precision:        False
 # Data loading
 perform_shuffle:        False
 batch_size:             48
 # Schedules
-lr_values:              [0.000005, 0.0000001] 
-lr_epochs:              [0, 64]
+lr_values:              [0.00001, 0.000005, 0.0000001] 
+lr_epochs:              [0, 64, 256]
