@@ -47,3 +47,29 @@ The Mars Orbital Image HiRISE dataset is a labelled classification dataset avail
 ## improvements
 
 * Multi-GPU parallelisation: https://pytorch.org/tutorials/beginner/dist_overview.html.
+
+## data (medical data)
+
+To download [Medical Segmentation Decathlon](http://medicaldecathlon.com/) datasets use the following commands (watch out - there's an ```rm -rf``` of downloaded cookies in there!).
+
+**Task 01 (brain tumors)**
+
+```console
+cd data
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1A2IU8Sgea1h3fYLpYtFb2v7NYdMjvEhU' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1A2IU8Sgea1h3fYLpYtFb2v7NYdMjvEhU" -O task-01-brain-tumor.tar && rm -rf /tmp/cookies.txt
+tar -xvf task-01-brain-tumor.tar
+```
+
+There are four different types of MRI image provided per instance:
+* The timing of radiofrequency pulse sequences used to make T1 images results in images which highlight fat tissue within the body.
+* The timing of radiofrequency pulse sequences used to make T2 images results in images which highlight fat AND water within the body.
+* Gadolinium-enhanced T1-weighted MRI (T1Gd) provides morphologic imaging of the blood–brain barrier breakdown in regions of angiogenesis usually surrounding central necrosis. Central necrosis appears hypointense when imaged by T1Gd because of the lack of viable vessels.
+* FLAIR MRI is a heavily T2-weighted technique that dampens the ventricular (i.e., free-water) CSF signal. Thus, the highest signals on the sequence are from certain brain parenchymal abnormalities, such as MS lesions.
+
+**Task 04 (hippocampus)**
+
+```console
+cd data
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1RzPB1_bqzQhlWvU-YGvZzhx2omcDh38C' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1RzPB1_bqzQhlWvU-YGvZzhx2omcDh38C" -O task-04-hippocampus.tar && rm -rf /tmp/cookies.txt
+tar -xvf task-04-hippocampus.tar
+```

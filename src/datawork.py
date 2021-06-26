@@ -2,8 +2,13 @@
 import os
 import glob
 import math
+import json
 
+import tqdm
 import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import nibabel as nib
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
@@ -19,7 +24,7 @@ def dataset_statistics(dataset, rgb=False):
     
     for i, inst in tqdm.tqdm(enumerate(dataset), total=(len(dataset))):
         # Get the image information
-        im = inst['image'].numpy()
+        im = np.array(inst['image'])
         dims = im.shape
         channels = dims[0]
         width    = dims[1]
@@ -27,8 +32,9 @@ def dataset_statistics(dataset, rgb=False):
         name = inst['filename']
         im_max = np.max(im)
         im_min = np.min(im)
+        mean = np.mean(im)
         
-        row = [name, channels, width, height, im_min, im_max]
+        row = [name, channels, width, height, im_min, im_max, mean]
         
         # Also want image mean and std
         if rgb:
@@ -48,7 +54,7 @@ def dataset_statistics(dataset, rgb=False):
         data.append(row)
      
     # Initialise the data frame object
-    cols = ["name", "channels", "width", "height", "min value", "max value"]
+    cols = ["name", "channels", "width", "height", "min value", "max value", "mean value"]
     if labelled:
         cols.append("label")
     if rgb:
@@ -236,3 +242,98 @@ def get_msl_train_test_val_dataloaders(fp_root, batch_size):
     dl_val   = DataLoader(ds_val, batch_size=batch_size, shuffle=False)
 
     return dl_train, dl_test, dl_val
+
+
+# Medical segmentation dataloaders
+
+class TransformNormalizeDecathlonBrainTumorT1(object):
+    """
+    Hard code the normalization values into this transform pipeline
+    """
+    def __init__(self):
+        self.normalize = transforms.Normalize(mean=[138.917554, 138.917554, 138.917554], 
+                                               std=[65.115783, 65.115783, 65.115783])
+        
+    def __call__(self, image):
+        return self.normalize(image)
+
+class DatasetDecathlonBrains(Dataset):
+    def __init__(self, fp_root, transform=None):
+        """ 
+        Reads all the image files in the provided dataset folder. Also reads the label
+        information. Relies on the downloaded hippocampus dataset's original 
+        file structure
+        """
+        
+        # Save what was provided
+        self.fp_root   = fp_root
+        self.transform = transform
+        
+        # Load the dataset info and labels
+        with open(self.fp_root + "/dataset.json") as f:
+            self.dataset = json.load(f)
+        self.train_list = self.dataset["training"]      # list of dicts with keys "image" and "label"
+        self.test_list  = self.dataset["test"]          # list of strings, unused here
+
+    def __len__(self):
+        return len(self.train_list)# + len(self.test_list)
+    
+    def __getitem__(self, idx):
+        """ 
+        An instance in this dataset is the image, label, and associated info
+        """
+        
+        # Load image
+        filename = f"{self.train_list[idx]['image']}"
+        filepath = f"{self.fp_root}/{filename}"
+        image = nib.load(filepath).get_fdata()
+
+        # shape: spatial x, spatial y, layers (z), image type
+        image = image[:,:,70:71,0] # We'll just look at a single slice
+        
+        # Apply transforms
+        if self.transform:
+            image = self.transform(image)
+        
+        # Return as a dict
+        instance = { 
+            'image': image,
+            'filepath': filepath,
+            'filename': filename
+        }
+        
+        # TODO HDF5 / bmp efficiency
+        return instance
+
+def get_decathlon_brains_train_test_dataloaders(filepath, data_proportion, train_test_ratio, batch_size, perform_shuffle):
+    """ 
+    Get the train and test dataloaders for the mars32k dataset
+    """
+    
+    # This is our simple preprocessing chain
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        TransformToFloat(),
+        TransformTo3ChannelIfNotAlready(),
+        TransformNormalizeDecathlonBrainTumorT1(),
+        transforms.Resize([512, 512]), 
+    ])
+    # Apply these transformations and load
+    dataset = DatasetDecathlonBrains(filepath, transform=transform)
+
+    # Downsize the amount of data being used if appropriate
+    data_downsize = math.floor( len(dataset) * data_proportion )
+    dataset = torch.utils.data.Subset(dataset, range(data_downsize))
+    
+    # Make the split of data
+    n_train = math.floor( len(dataset) * train_test_ratio )
+    n_test  = ( len(dataset) - n_train )
+    train_set, test_set = torch.utils.data.random_split(dataset, [n_train, n_test])
+    
+    # Convert to dataloaders
+    shuffle = perform_shuffle
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=shuffle)
+    test_loader  = DataLoader(test_set,  batch_size=batch_size, shuffle=shuffle)
+
+    return train_loader, test_loader
+    
