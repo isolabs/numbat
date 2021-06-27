@@ -269,6 +269,16 @@ class DatasetDecathlonBrains(Dataset):
         self.fp_root   = fp_root
         self.transform = transform
         
+        # This is a hack - need to move it out of here and into the loader constructor helper
+        # TODO
+        self.transform_labels = transforms.Compose([
+            transforms.ToTensor(),
+            #TransformToFloat(),
+            # Don't normalise the labels
+            #TransformNormalizeDecathlonBrainTumorT1(),
+            transforms.Resize([256, 256]), 
+        ])
+
         # Load the dataset info and labels
         with open(self.fp_root + "/dataset.json") as f:
             self.dataset = json.load(f)
@@ -282,30 +292,48 @@ class DatasetDecathlonBrains(Dataset):
         """ 
         An instance in this dataset is the image, label, and associated info
         """
-        
-        # Load image
-        filename = f"{self.train_list[idx]['image']}"
-        filepath = f"{self.fp_root}/{filename}"
-        image = nib.load(filepath).get_fdata()
 
+        def get_image_with_key(key):
+            # Load image
+            filename = f"{self.train_list[idx][key]}"
+            filepath = f"{self.fp_root}/{filename}"
+            image = nib.load(filepath).get_fdata()
+
+            return image
+
+        # Load the image
         # shape: spatial x, spatial y, layers (z), image type
-        image = image[:,:,70:71,0] # We'll just look at a single slice
+        image = get_image_with_key("image")[:,:,70:71,0] # We'll just look at a single slice of the T1
         
         # Apply transforms
         if self.transform:
             image = self.transform(image)
+
+        # Load the label image
+        label = get_image_with_key("label")[:,:,70]
+        label = self.transform_labels(label) # Still in range 0,255
+        label = torch.round(label)
+        label = label[0,:,:] # Shape is 256 x 256
+
+        """
+        #label *= 1.0/label.max() 
+        _ = np.einsum("ijk->jki", _)
+        _ = np.stack((_[:,:,0],)*3, axis=-1)
+        print(_.shape)
+        plt.imsave(f"../logs/labelcheck-{idx}.png", _)
+        """
         
         # Return as a dict
         instance = { 
+            'filename': "",
             'image': image,
-            'filepath': filepath,
-            'filename': filename
+            'label': label,
         }
         
         # TODO HDF5 / bmp efficiency
         return instance
 
-def get_decathlon_brains_train_test_dataloaders(filepath, data_proportion, train_test_ratio, batch_size, perform_shuffle):
+def get_decathlon_brains_train_test_val_dataloaders(filepath, data_proportion, train_test_val_ratios, batch_size, perform_shuffle):
     """ 
     Get the train and test dataloaders for the mars32k dataset
     """
@@ -316,7 +344,7 @@ def get_decathlon_brains_train_test_dataloaders(filepath, data_proportion, train
         TransformToFloat(),
         TransformTo3ChannelIfNotAlready(),
         TransformNormalizeDecathlonBrainTumorT1(),
-        transforms.Resize([512, 512]), 
+        transforms.Resize([256, 256]), 
     ])
     # Apply these transformations and load
     dataset = DatasetDecathlonBrains(filepath, transform=transform)
@@ -326,14 +354,17 @@ def get_decathlon_brains_train_test_dataloaders(filepath, data_proportion, train
     dataset = torch.utils.data.Subset(dataset, range(data_downsize))
     
     # Make the split of data
-    n_train = math.floor( len(dataset) * train_test_ratio )
-    n_test  = ( len(dataset) - n_train )
-    train_set, test_set = torch.utils.data.random_split(dataset, [n_train, n_test])
+    n_train = math.floor( train_test_val_ratios[0] * len(dataset) )
+    n_test  = math.floor( train_test_val_ratios[1] * len(dataset) )
+    n_val   = math.floor( train_test_val_ratios[2] * len(dataset) )
+    n_val  += len(dataset) - n_train - n_test - n_val
+    train_set, test_set, val_set = torch.utils.data.random_split(dataset, [n_train, n_test, n_val])
     
     # Convert to dataloaders
     shuffle = perform_shuffle
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=shuffle)
     test_loader  = DataLoader(test_set,  batch_size=batch_size, shuffle=shuffle)
+    val_loader   = DataLoader(val_set,  batch_size=batch_size, shuffle=shuffle)
 
-    return train_loader, test_loader
+    return train_loader, test_loader, val_loader
     

@@ -1,0 +1,47 @@
+# I/O
+fp_save:                        '/home/prang/dev/numbat/experiments/medseg-dino-5'
+fp_data_decathlon_brain_tumor:  '/home/prang/dev/numbat/data/Task01_BrainTumour'
+
+# DINO parameterisation
+global_size:            224
+local_size:             96
+n_global_crops:         2
+n_local_crops:          2 #8
+n_classes:              0
+centering_rate_m:       0.9
+
+# Training hyperparameters
+n_epochs:               32 #300
+mixed_precision:        False
+# Data loading
+data_proportion:        1.0
+train_test_val_ratios:  [0.4,0.4,0.2]
+perform_shuffle:        False
+batch_size:             10 #1024
+# Schedules
+lr_values:              [0.000125, 0.000125, 0.000001] # lr ramped to 0.0005 ∗ batchsize/256 over 10 epochs, adamw opt
+lr_epochs:              [0, 6, 64]
+weight_decay_values:    [0.04, 0.4] # wd follows a cosine schedule from 0.04 to 0.4
+weight_decay_epochs:    [0, 64]
+temp_student_values:    [0.1] # Ts is set to 0.1
+temp_student_epochs:    [0]
+temp_teacher_values:    [0.04, 0.07] # Tt from 0.04 to 0.07 during the first 30 epochs
+temp_teacher_epochs:    [0, 15]
+cent_rate_m_values:     [0.9]
+cent_rate_m_epochs:     [0]
+lambda_ema_values:      [0.996, 1]
+lambda_ema_epochs:      [0, 80]
+
+# Architecture hyperparameters
+in_channels:            3
+patch_size:             8
+embed_dim:              384
+# Transformer parameters
+n_blocks:               4
+# Multihead attention parameters
+n_heads:                4
+attn_drop_p:            0. 
+attn_embed_drop_p:      0.
+# MLP parameters
+mlp_hidden_ratio:       2.0
+mlp_drop_p:             0.

@@ -7,6 +7,7 @@ import datawork as dw
 import routines_dino
 import routines_dino_medseg
 import routines_fine
+import routines_fine_medseg
 
 if __name__ == "__main__":
 
@@ -41,16 +42,28 @@ if __name__ == "__main__":
     """
 
     # MED SEG
-    #routines_dino_medseg.train(
-    #    f"{fp_configs}/medseg-dino-3.yml"
-    #)
+    # Perform unsupervised training
+    if False:
+        routines_dino_medseg.train(
+            f"{fp_configs}/medseg-dino-6-no-dino.yml"
+        )
     
     # Perform inferencing
-    routines_dino_medseg.inference_attention_maps(
-        f"{fp_experiments}/medseg-dino-3 2021-06-26 04:03:14.pt",
-        f"{fp_logs}",
-        n_images=128
-    )
+    if False:
+        routines_dino_medseg.inference_attention_maps(
+            f"{fp_experiments}/medseg-dino-5 2021-06-26 10:52:52.pt",
+            f"{fp_logs}",
+            n_images=128
+        )
 
     # Perform a fine tuning experiment
-    #routines_fine.train(f"{fp_configs}/fine-4.yml")
+    if True:
+        routines_fine_medseg.train(f"{fp_configs}/medseg-fine-1.yml")
+
+    # Perform segmentation inferencing
+    if False:
+        routines_fine_medseg.inference_segmentation_maps(
+            f"{fp_experiments}/medseg-fine-2-no-dino 2021-06-27 02:57:58.pt",
+            f"{fp_logs}",
+            n_images=128
+        )

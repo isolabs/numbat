@@ -1,0 +1,16 @@
+# I/O
+fp_save:                '/home/prang/dev/numbat/experiments/medseg-fine-2-no-dino'
+fp_load_dino_model:     '/home/prang/dev/numbat/experiments/medseg-dino-6-no-dino 2021-06-27 01:37:56.pt'
+fp_data_decathlon_brain_tumor:  '/home/prang/dev/numbat/data/Task01_BrainTumour'
+
+# Training hyperparameters
+n_epochs:               32 #300
+mixed_precision:        False
+# Data loading
+data_proportion:        1.0
+train_test_val_ratios:  [0.4,0.4,0.2]
+perform_shuffle:        False
+batch_size:             12
+# Schedules
+lr_values:              [0.0001, 0.00001] 
+lr_epochs:              [0, 64]

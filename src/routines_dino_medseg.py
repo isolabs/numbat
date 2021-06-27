@@ -148,10 +148,10 @@ def train(fp_config):
     # ================ DATA ================
     
     print("Loading training data ... ", end="")
-    train_loader, test_loader = dw.get_decathlon_brains_train_test_dataloaders(
+    train_loader, test_loader, val_loader = dw.get_decathlon_brains_train_test_val_dataloaders(
         config['fp_data_decathlon_brain_tumor'], 
         config['data_proportion'], 
-        config['train_test_ratio'],
+        config['train_test_val_ratios'],
         config['batch_size'],
         config['perform_shuffle'])
     print("ready")
@@ -342,10 +342,10 @@ def inference_attention_maps(fp_experiment, fp_out, n_images=4):
     # ================ DATA ================
     
     print("Loading testing data ... ", end="")
-    train_loader, test_loader = dw.get_decathlon_brains_train_test_dataloaders(
+    train_loader, test_loader, val_loader = dw.get_decathlon_brains_train_test_val_dataloaders(
         config['fp_data_decathlon_brain_tumor'], 
         config['data_proportion'], 
-        config['train_test_ratio'],
+        config['train_test_val_ratios'],
         1, # We'll inference one image at a time for simplicity
         config['perform_shuffle'])
     print("ready")
@@ -398,8 +398,10 @@ def inference_attention_maps(fp_experiment, fp_out, n_images=4):
             # Put it on the desired device
             image = image.to(device)
 
-            # Get the output, shape is (B=1, n_heads, X, X)
+            # Get the output, shape is (B=1, n_heads, X=Y^2 + 1, X=Y^2 + 1),
+            # where Y is the W/H
             attn = model(image, return_only_last_attn=True)
+            #print(attn.shape)
             n_heads = attn.shape[1]
 
             # We only want the CLS token SELF attention, so not the heads

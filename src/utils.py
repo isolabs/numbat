@@ -163,3 +163,27 @@ def save_fine_experiment(
         'config': config,
         'metrics': metrics
     }, filepath)
+
+""" Evaluation of basic metrics from Casey"""
+def evaluate_segmentation(yt, yp):
+    """
+    :param yt:
+    :param yp:
+    :return:
+    """
+    intersection = np.logical_and(yt, yp)
+    union = np.logical_or(yt, yp)
+    iou = np.sum(intersection) / np.sum(union)
+    yt = yt.flatten()
+    yp = yp.flatten()
+    dice = dice_coef(yt, yp)
+    return {'iou': iou, 'dice': dice}
+    
+def dice_coef(yt, yp):
+    """
+    :param yt: flattened y_true (1d array)
+    :param yp: flattened y_pred (1d array)
+    :return: dice coefficient (float)
+    """
+    intersection = np.logical_and(yt, yp)
+    return 2. * intersection.sum() / (yt.sum() + yp.sum())
