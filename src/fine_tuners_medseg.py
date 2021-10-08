@@ -1,6 +1,9 @@
 
 import math
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 import torch
 import torch.nn as nn
 from torchvision import transforms
@@ -38,11 +41,19 @@ class FineTunerSegmentation(nn.Module):
         # segmentation output
         self.label_map_size = label_map_size
         # 32x32 to 64x64
-        self.up1 = nn.ConvTranspose2d(in_channels=n_heads_classes, out_channels=n_heads_classes, kernel_size=7, stride=2, padding=3, output_padding=1)
+        self.up1 = nn.ConvTranspose2d(in_channels=n_heads_classes, out_channels=2*n_heads_classes, kernel_size=7, stride=2, padding=3, output_padding=1)
         # 64x64 to 128x128
-        self.up2 = nn.ConvTranspose2d(in_channels=n_heads_classes, out_channels=n_heads_classes, kernel_size=7, stride=2, padding=3, output_padding=1)
+        self.up2 = nn.ConvTranspose2d(in_channels=2*n_heads_classes, out_channels=4*n_heads_classes, kernel_size=7, stride=2, padding=3, output_padding=1)
         # 128x128 to 256x256
-        self.up3 = nn.ConvTranspose2d(in_channels=n_heads_classes, out_channels=n_heads_classes, kernel_size=7, stride=2, padding=3, output_padding=1)
+        self.up3 = nn.ConvTranspose2d(in_channels=4*n_heads_classes, out_channels=n_heads_classes, kernel_size=7, stride=2, padding=3, output_padding=1)
+
+        # Try just regular conv without upsizing
+        self.conv1 = nn.Conv2d(in_channels=n_heads_classes, out_channels=2*n_heads_classes, kernel_size=5, stride=1, padding=2)
+        self.act1  = nn.GELU()
+        self.conv2 = nn.Conv2d(in_channels=2*n_heads_classes, out_channels=n_heads_classes, kernel_size=5, stride=1, padding=2)
+
+        # This is just for upsizing without learned variables
+        self.non_learnable_upsize = nn.Upsample(size=label_map_size, mode="bilinear")
 
         # Seg class predictions (channel/class wise)
         self.softmax = nn.Softmax(dim=1)
@@ -75,13 +86,42 @@ class FineTunerSegmentation(nn.Module):
         attn = attn[:, :, 0, 1:]                        # (B, n_heads, 1, X - 1)
         attn = attn.reshape(B, n_heads, w_map, h_map)   # (B, n_heads, WMAP, HMAP)
 
+        def save(tensor, name):
+            tensor = torch.argmax(tensor, dim=1)
+            tensor = tensor[0:1]
+            tensor = tensor.detach().cpu().numpy()
+            #print(tensor.shape)
+            tensor = np.einsum("ijk->jki", tensor)
+            tensor = np.stack((tensor[:,:,0],)*3, axis=-1)
+            tensor = np.interp(tensor, (tensor.min(), tensor.max()), (0, +1))
+            plt.imsave(f"../logs/{name}.png", tensor)
+
+        """
         # We'll need to transform this to the size of the outputs
         # with a differentiable function
+        save(attn, "up-0")
         attn = self.up1(attn)
+        save(attn, "up-1")
         attn = self.up2(attn)
+        save(attn, "up-2")
         attn = self.up3(attn)
+        save(attn, "up-3")
+        """
+
+        #save(attn, "raw-attn")
+
+        # Basic upsampling
+        attn = self.non_learnable_upsize(attn)
 
         # Now we just need to argmax the NH dimension and that will get us the labels
         #seg_map = torch.argmax(attn, dim=1)
+
+        # Need to be able to map between heads and outputs, rather than relearn the whole thing
+        attn = self.conv1(attn)
+        attn = self.act1(attn)
+        attn = self.conv2(attn)
+
+        # Ensure that per pixel class predictions are a probability distribution
+        attn = self.softmax(attn)
 
         return attn

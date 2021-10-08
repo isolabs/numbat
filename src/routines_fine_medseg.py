@@ -13,6 +13,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as T
 
+import torchgeometry as tgm
+
 import utils 
 import fine_tuners_medseg
 import datawork as dw
@@ -64,6 +66,11 @@ def train_test_single_epoch(
             loss = loss_computer( yhat, y.long() )
             #loss.requires_grad = True
 
+            # Multiclass dice
+            #   - Input: :math:`(N, C, H, W)` where C = number of classes.
+            #   - Target: :math:`(N, H, W)` where each value is
+            loss = tgm.losses.dice.dice_loss(yhat, y.long())
+
             # Update the student with mixed precision loss prop
             scaler.scale(loss).backward()
             scaler.step(optimiser)
@@ -74,7 +81,7 @@ def train_test_single_epoch(
 
     # Perform a test run and measure the accuracy
 
-    def calculate_accuracy(loader, desc):
+    def calculate_metrics(loader, desc):
         """ 
         Compare the ground truth and return the test accuracy
         """
@@ -105,24 +112,28 @@ def train_test_single_epoch(
             #print(y.shape)
             #print(yhat.shape)
 
+            def save(tensor, filepath):
+                #print(tensor.shape)
+                tensor = np.einsum("cij->ij", tensor)
+                tensor = np.stack((tensor,)*3, axis=-1)
+                tensor = (tensor - np.min(tensor)) / (np.max(tensor) - np.min(tensor))
+                #print(tensor.shape)
+                plt.imsave(filepath, tensor)
+
+            save(y.detach().cpu().numpy(), f"../logs/seg-true.png")
+            save(torch.argmax(yhat.detach().cpu(), dim=1).numpy(), f"../logs/seg-pred.png")
+            print(torch.unique(torch.argmax(yhat.detach().cpu(), dim=1)))
+
             for j in range(len(per_class_seg_res)):
 
-                seg_true = y.detach().cpu().numpy() == j    
-                seg_pred = yhat[0,j:j+1,:,:].detach().cpu().numpy()
-
-                def save(tensor, filepath):
-                    #print(tensor.shape)
-                    tensor = np.einsum("cij->ij", tensor)
-                    tensor = np.stack((tensor,)*3, axis=-1)
-                    tensor = (tensor - np.min(tensor)) / (np.max(tensor) - np.min(tensor))
-                    #print(tensor.shape)
-                    plt.imsave(filepath, tensor)
+                seg_true = np.where(y.detach().cpu().numpy() == j, 1.0, 0.0)
+                seg_pred = yhat[:,j:j+1,:,:].detach().cpu().numpy()
                 
-                save(x.detach().cpu().numpy()[:,0],         f"../logs/seg_in-{i}.png")
-                save(y.detach().cpu().numpy(), f"../logs/seg_full-{i}.png")
+                #save(x.detach().cpu().numpy()[:,0],         f"../logs/seg_in-{i}.png")
+                #save(y.detach().cpu().numpy(), f"../logs/seg_full-{i}.png")
                 #save(yhat[0].detach().cpu().numpy(), f"../logs/seg_pred_full-{i}.png")
-                save(seg_pred, f"../logs/seg_pred-{i}-{j}.png")
-                #save(seg_true, f"../logs/seg_true-{i}-{j}.png", boolean=True)
+                #save(seg_true, f"../logs/seg-true-{i}-class-{j}.png")
+                save(seg_pred[0], f"../logs/seg-pred-{j}.png")
                 
                 _ = utils.evaluate_segmentation(seg_true, seg_pred)
                 per_class_seg_res[j]['iou']     += _['iou']
@@ -137,8 +148,6 @@ def train_test_single_epoch(
             # For averaging
             num_instances += len(batch)
 
-            break
-
         # Average out the IoU and dice
         for i in range(len(per_class_seg_res)):
             per_class_seg_res[i]['iou']     /= num_instances
@@ -150,7 +159,7 @@ def train_test_single_epoch(
 
     # Swap model to evaluation mode before testing, then back again
     model.eval()
-    test_accuracy, per_class_seg_res = calculate_accuracy(test_loader, "Testing")
+    test_accuracy, per_class_seg_res = calculate_metrics(test_loader, "Testing")
     model.train()
 
     # Announce
